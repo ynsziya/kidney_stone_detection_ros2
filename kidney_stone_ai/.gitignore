@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Data & models (büyük dosyalar)
+data/dicom/**
+data/nifti/**
+!data/dicom/.gitkeep
+!data/nifti/.gitkeep
+models/kidney/**
+models/stone/**
+!models/kidney/.gitkeep
+!models/stone/.gitkeep
+
+# Outputs
+outputs/
+*.stl
+*.obj
+*.ply
+
+# IDE
+.idea/
+.vscode/
+*.swp
