@@ -5,6 +5,7 @@ from pathlib import Path
 from preprocessing.dicom_reader import load_dicom_series
 from preprocessing.nifti_reader import load_nifti
 from preprocessing.scan_data import ScanData
+from preprocessing.preprocess import preprocess
 
 __all__ = ["ScanData", "load_scan", "load_dicom_series", "load_nifti", "preprocess",]
 
