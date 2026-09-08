@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
+
 @dataclass
 class ScanData:
     """Tek bir CT hacmi + geometri metadata."""
@@ -27,12 +28,13 @@ class ScanData:
     path: Path
     """Yüklenen dosya veya DICOM klasör yolu."""
 
+
 def sitk_image_to_scan(image, path: Path) -> ScanData:
-    """SimpleITK Image -> ScanData."""
+    """SimpleITK Image → ScanData."""
     import SimpleITK as sitk
 
-    volume = sitk.GetArrayFromImage(image).astype(np.float32)   # (z, y, x)
-    spacing = tuple(float(v) for v in image.getSpacing())   # (sx, sy, sz)
+    volume = sitk.GetArrayFromImage(image).astype(np.float32)  # (z, y, x)
+    spacing = tuple(float(v) for v in image.GetSpacing())  # (sx, sy, sz)
     origin = tuple(float(v) for v in image.GetOrigin())
     direction = tuple(float(v) for v in image.GetDirection())
 
@@ -47,13 +49,15 @@ def sitk_image_to_scan(image, path: Path) -> ScanData:
         path=path,
     )
 
+
 def build_affine(
-    spacing: tuple(float, float, float),
-    origin: tuple(float, float, float),
+    spacing: tuple[float, float, float],
+    origin: tuple[float, float, float],
     direction: tuple[float, ...],
 ) -> np.ndarray:
     """
     SimpleITK geometrisinden 4x4 affine üretir.
+
     Voxel indeksi (i, j, k) = (x_index, y_index, z_index) için:
     world = origin + direction @ (i*sx, j*sy, k*sz)
     """

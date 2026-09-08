@@ -5,6 +5,7 @@ from pathlib import Path
 
 from preprocessing import load_scan
 
+
 def print_scan_info(path: Path) -> None:
     scan = load_scan(path)
     vol = scan.volume
@@ -21,6 +22,7 @@ def print_scan_info(path: Path) -> None:
     print(f"HU max:   {float(vol.max()):.1f}")
     print(f"HU mean:  {float(vol.mean()):.1f}")
 
+
 def check_folders() -> None:
     root = Path(__file__).resolve().parent
     print("kidney_stone_ai is ready")
@@ -35,6 +37,7 @@ def check_folders() -> None:
     else:
         print("folder check: OK")
 
+
 def main() -> None:
     if len(sys.argv) < 2:
         check_folders()
@@ -43,7 +46,9 @@ def main() -> None:
         print("  python main.py data/nifti/your_file.nii.gz")
         print("  python main.py data/dicom/your_series_folder")
         return
+
     print_scan_info(Path(sys.argv[1]))
+
 
 if __name__ == "__main__":
     main()
