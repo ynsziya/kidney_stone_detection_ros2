@@ -6,7 +6,7 @@ from preprocessing.dicom_reader import load_dicom_series
 from preprocessing.nifti_reader import load_nifti
 from preprocessing.scan_data import ScanData
 
-__all__ = ["ScanData", "load_scan", "load_dicom_series", "load_nifti"]
+__all__ = ["ScanData", "load_scan", "load_dicom_series", "load_nifti", "preprocess",]
 
 def load_scan(path: str | Path) -> ScanData:
     """
