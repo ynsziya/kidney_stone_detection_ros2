@@ -9,8 +9,8 @@ Kaynak tasarım: [`kidney_stone_detection.md`](kidney_stone_detection.md)
 | Adım | Konu | Durum |
 |------|------|--------|
 | 0 | venv + iskelet + `main.py` | Tamamlandı |
-| 1 | `load_scan` (DICOM + NIfTI) | Bekliyor |
-| 2 | HU clip, resample, normalize | Bekliyor |
+| 1 | `load_scan` (DICOM + NIfTI) | Tamamlandı |
+| 2 | HU clip, resample, normalize | Tamamlandı |
 | 3 | PyVista volume viewer | Bekliyor |
 | 4 | PySide6 GUI dosya yükleme | Bekliyor |
 | 5 | TotalSegmentator böbrek segmentasyonu | Bekliyor |
@@ -159,4 +159,4 @@ Stack: Python 3.11+, SimpleITK, nibabel, pydicom, numpy, scipy, scikit-image, Py
 
 ## Sonraki oturum
 
-**Adım 1:** DICOM/NIfTI `load_scan` — ask modunda tam kod paylaşılacak.
+**Adım 3:** PyVista volume viewer — ask modunda tam kod paylaşılacak.
