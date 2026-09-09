@@ -11,8 +11,8 @@ Kaynak tasarım: [`kidney_stone_detection.md`](kidney_stone_detection.md)
 | 0 | venv + iskelet + `main.py` | Tamamlandı |
 | 1 | `load_scan` (DICOM + NIfTI) | Tamamlandı |
 | 2 | HU clip, resample, normalize | Tamamlandı |
-| 3 | PyVista volume viewer | Bekliyor |
-| 4 | PySide6 GUI dosya yükleme | Bekliyor |
+| 3 | PyVista volume viewer | Tamamlandı |
+| 4 | PySide6 GUI dosya yükleme | Tamamlandı |
 | 5 | TotalSegmentator böbrek segmentasyonu | Bekliyor |
 | 6 | Kidney ROI crop + margin | Bekliyor |
 | 7 | Stone segmentation iskeleti (geçici HU/CCA) | Bekliyor |
@@ -159,4 +159,4 @@ Stack: Python 3.11+, SimpleITK, nibabel, pydicom, numpy, scipy, scikit-image, Py
 
 ## Sonraki oturum
 
-**Adım 3:** PyVista volume viewer — ask modunda tam kod paylaşılacak.
+**Adım 5:** TotalSegmentator böbrek segmentasyonu — ask modunda tam kod paylaşılacak.
