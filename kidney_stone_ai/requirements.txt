@@ -2,3 +2,4 @@ numpy>=1.24
 SimpleITK>=2.3
 nibabel>=5.1
 pydicom>=2.4
+pyvista>=0.43
