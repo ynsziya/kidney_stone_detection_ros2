@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
+from PySide6.QtWidgets import QApplication
+
+from app import MainWindow
 from preprocessing import load_scan, preprocess
 from visualization import show_orthogonal_slices
 
@@ -19,31 +23,47 @@ def print_scan_info(title: str, scan) -> None:
     print()
 
 
+def run_cli(path: Path, do_preprocess: bool) -> None:
+    raw = load_scan(path)
+    print_scan_info("RAW", raw)
+    if do_preprocess:
+        scan = preprocess(raw)
+        print_scan_info("PREPROCESSED", scan)
+        show_orthogonal_slices(scan, title="Preprocessed CT")
+    else:
+        show_orthogonal_slices(raw, title="Raw CT", clim=(-200.0, 400.0))
+
+
+def run_gui() -> None:
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Kidney stone AI — load & view CT")
-    parser.add_argument("path", type=Path, help="NIfTI file or DICOM folder")
+    parser = argparse.ArgumentParser(description="Kidney stone AI")
     parser.add_argument(
-        "--preprocess",
+        "path",
+        nargs="?",
+        type=Path,
+        help="Optional: CLI mode — NIfTI file or DICOM folder",
+    )
+    parser.add_argument("--preprocess", action="store_true")
+    parser.add_argument(
+        "--cli",
         action="store_true",
-        help="Show preprocessed volume instead of raw",
+        help="Force CLI/PyVista mode (no GUI)",
     )
     args = parser.parse_args()
 
-    raw = load_scan(args.path)
-    print_scan_info("RAW", raw)
-
-    if args.preprocess:
-        scan = preprocess(raw)
-        print_scan_info("PREPROCESSED", scan)
-        # 0–1 arası; clim otomatik
-        show_orthogonal_slices(scan, title="Preprocessed CT")
+    # Path verildiyse veya --cli ise eski davranış; yoksa GUI
+    if args.cli or args.path is not None:
+        if args.path is None:
+            parser.error("CLI mode requires a path")
+        run_cli(args.path, args.preprocess)
     else:
-        # RAW HU: yumuşak doku / böbrek penceresi
-        show_orthogonal_slices(
-            raw,
-            title="Raw CT",
-            clim=(-200.0, 400.0),
-        )
+        run_gui()
 
 
 if __name__ == "__main__":

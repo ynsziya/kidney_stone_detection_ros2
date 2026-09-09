@@ -3,3 +3,4 @@ SimpleITK>=2.3
 nibabel>=5.1
 pydicom>=2.4
 pyvista>=0.43
+PySide6>=6.5
