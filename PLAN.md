@@ -20,6 +20,7 @@ Kaynak tasarım: [`kidney_stone_detection.md`](kidney_stone_detection.md)
 | 9 | Mesh + STL export + mesh viewer (M5) | Tamamlandı |
 | 10A | Bağımsız ROS2 paketi → RViz (MarkerArray) | Tamamlandı |
 | 10B | Aynı mesh’ler → Gazebo spawn | Tamamlandı |
+| 10C | GUI → RViz / Gazebo köprüsü (butonlar) | Tamamlandı |
 | 11 | Gerçek stone model eğitimi | Sonra |
 
 ## Çalışma şekli (sabit kural)
@@ -148,6 +149,13 @@ Stack: Python 3.11+, SimpleITK, nibabel, pydicom, numpy, scipy, scikit-image, Py
 - `~/reload` ile yeniden yazıp spawn
 - **Çıkış kriteri:** Export edilen böbrek/taş Gazebo’da da görünüyor
 
+### Adım 10C — GUI → RViz / Gazebo köprüsü
+
+- **Open RViz** / **Open Gazebo** butonları
+- `app/ros2_bridge.py`: subprocess ile launch / reload (`rclpy` yok)
+- Gerekirse STL’yi `outputs/meshes` altına yazar
+- **Çıkış kriteri:** GUI’den RViz ve Gazebo açılıyor / mesh yenileniyor
+
 ### Adım 11 (ileride) — Gerçek stone model eğitimi
 
 - Label standardizasyonu, patient-level split, Dice+Focal, stone-positive sampling
@@ -159,5 +167,3 @@ Stack: Python 3.11+, SimpleITK, nibabel, pydicom, numpy, scipy, scikit-image, Py
 ## Sonraki oturum
 
 **Adım 11** (ileride) — gerçek stone model eğitimi.
-
-GUI köprüsü: **Open RViz** / **Open Gazebo** butonları (`app/ros2_bridge.py`, subprocess; rclpy yok).
