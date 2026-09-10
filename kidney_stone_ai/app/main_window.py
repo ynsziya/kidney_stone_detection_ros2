@@ -175,6 +175,7 @@ class MainWindow(QMainWindow):
         self.kidney_mask: np.ndarray | None = None
         self.kidney_rois: list | None = None
         self.stone_results: dict | None = None
+        self.stone_properties: list | None = None
         self.view_mode: str = "full"
         self._stone_row_meta: list[tuple[str, int, int]] = []
 
@@ -308,9 +309,18 @@ class MainWindow(QMainWindow):
         results_font.setBold(True)
         self.results_label.setFont(results_font)
 
-        self.stone_table = QTableWidget(0, 6)
+        self.stone_table = QTableWidget(0, 8)
         self.stone_table.setHorizontalHeaderLabels(
-            ["Side", "#", "Voxels", "Volume (mm³)", "Centroid Z", "Z range"]
+            [
+                "Side",
+                "#",
+                "Vol (mm³)",
+                "Diam (mm)",
+                "Mean HU",
+                "Max HU",
+                "Min HU",
+                "Centroid Z",
+            ]
         )
         self.stone_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
@@ -492,6 +502,7 @@ class MainWindow(QMainWindow):
         self.kidney_mask = None
         self.kidney_rois = None
         self.stone_results = None
+        self.stone_properties = None
         self.view_mode = "full"
         self.clear_stone_table()
         self.path_label.setText(f"Loaded: {path}")
@@ -630,6 +641,7 @@ class MainWindow(QMainWindow):
             self.kidney_mask = result.mask
             self.kidney_rois = None
             self.stone_results = None
+            self.stone_properties = None
             self.clear_stone_table()
             counts = mask_voxel_counts(result.mask)
 
@@ -676,6 +688,7 @@ class MainWindow(QMainWindow):
                 margin=25,
             )
             self.stone_results = None
+            self.stone_properties = None
             self.clear_stone_table()
         except Exception as exc:
             QMessageBox.critical(self, "ROI error", str(exc))
@@ -753,51 +766,38 @@ class MainWindow(QMainWindow):
     def clear_stone_table(self) -> None:
         self._stone_row_meta.clear()
         self.stone_table.setRowCount(0)
-        self.results_label.setText("Stone candidates — satıra tıkla → dilime git")
+        self.results_label.setText("Stone analysis — satıra tıkla → dilime git")
 
     def fill_stone_table(self) -> None:
         self._stone_row_meta.clear()
         self.stone_table.setRowCount(0)
-        if not self.stone_results or not self.kidney_rois:
+        if not self.stone_properties:
+            self.results_label.setText("Stone analysis — henüz yok")
             return
 
-        rows: list[tuple[str, int, int, float, float, str, int]] = []
-        for side, res in self.stone_results.items():
-            sx, sy, sz = next(
-                r.spacing for r in self.kidney_rois if r.laterality == side
-            )
-            for comp_id in range(1, res.n_components + 1):
-                comp = res.mask == comp_id
-                n_vox = int(comp.sum())
-                zs, ys, xs = np.where(comp)
-                z_c = float(zs.mean())
-                vol_mm3 = n_vox * sx * sy * sz
-                z_range = f"{int(zs.min())}-{int(zs.max())}"
-                rows.append(
-                    (side, comp_id, n_vox, vol_mm3, z_c, z_range, int(round(z_c)))
-                )
-
-        self.stone_table.setRowCount(len(rows))
-        for row_idx, (side, comp_id, n_vox, vol_mm3, z_c, z_range, z_jump) in enumerate(
-            rows
-        ):
+        props = self.stone_properties
+        self.stone_table.setRowCount(len(props))
+        for row_idx, p in enumerate(props):
             values = [
-                side,
-                str(comp_id),
-                str(n_vox),
-                f"{vol_mm3:.1f}",
-                f"{z_c:.1f}",
-                z_range,
+                p.laterality,
+                str(p.stone_id),
+                f"{p.volume_mm3:.1f}",
+                f"{p.diameter_mm:.1f}",
+                f"{p.mean_hu:.0f}",
+                f"{p.max_hu:.0f}",
+                f"{p.min_hu:.0f}",
+                f"{p.centroid_zyx[0]:.1f}",
             ]
             for col, text in enumerate(values):
                 item = QTableWidgetItem(text)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 item.setForeground(QBrush(QColor("#e8ecf1")))
                 self.stone_table.setItem(row_idx, col, item)
-            self._stone_row_meta.append((side, comp_id, z_jump))
+            z_jump = int(round(p.centroid_zyx[0]))
+            self._stone_row_meta.append((p.laterality, p.stone_id, z_jump))
 
         self.results_label.setText(
-            f"Stone candidates ({len(rows)}) — satıra tıkla → ROI + dilim"
+            f"Stone analysis ({len(props)}) — satıra tıkla → ROI + dilim"
         )
 
     def on_stone_table_clicked(self, row: int, _column: int) -> None:
@@ -819,13 +819,18 @@ class MainWindow(QMainWindow):
             return
 
         from ai import segment_stones_in_rois
+        from postprocessing import analyze_all_rois, format_stone_report
 
-        self.set_progress_busy("Detecting stone candidates (HU)…")
+        self.set_progress_busy("Detecting + analyzing stones (HU)…")
         try:
             self.stone_results = segment_stones_in_rois(
                 self.kidney_rois,
                 hu_threshold=300.0,
                 min_voxels=8,
+            )
+            self.stone_properties = analyze_all_rois(
+                self.kidney_rois,
+                self.stone_results,
             )
         except Exception as exc:
             QMessageBox.critical(self, "Stone error", str(exc))
@@ -833,39 +838,20 @@ class MainWindow(QMainWindow):
             self.set_progress(0, "Stone detection failed")
             return
 
-        summary_lines = []
-        detail_lines = []
-        for side, res in self.stone_results.items():
-            n_vox = int(res.binary_mask.sum())
-            summary_lines.append(
-                f"{side}: {res.n_components} candidate(s), {n_vox} voxels"
-            )
-            detail_lines.append(f"=== {side} stones ===")
-            for comp_id in range(1, res.n_components + 1):
-                comp = res.mask == comp_id
-                n = int(comp.sum())
-                zs, ys, xs = np.where(comp)
-                z_c = float(zs.mean())
-                y_c = float(ys.mean())
-                x_c = float(xs.mean())
-                sx, sy, sz = next(
-                    r.spacing for r in self.kidney_rois if r.laterality == side
-                )
-                vol_mm3 = n * sx * sy * sz
-                detail_lines.append(
-                    f"  #{comp_id}: voxels={n}, ~{vol_mm3:.1f} mm³, "
-                    f"centroid z={z_c:.1f} (y={y_c:.1f}, x={x_c:.1f}), "
-                    f"z-range=[{zs.min()}-{zs.max()}]"
-                )
-            detail_lines.append("")
-
+        summary_lines = [
+            f"{side}: {res.n_components} stone(s)"
+            for side, res in self.stone_results.items()
+        ]
         summary = " | ".join(summary_lines)
-        body = summary + "\n\n" + "\n".join(detail_lines).strip()
-        self.append_info("Stone candidates (HU threshold)", body)
-        print(body)
+        report = format_stone_report(self.stone_properties)
+        self.append_info("Stone analysis", summary + "\n\n" + report)
+        print(report)
 
         self.fill_stone_table()
-        self.set_progress(100, f"Stones ready — {len(self._stone_row_meta)} candidates")
+        self.set_progress(
+            100,
+            f"Analysis done — {len(self.stone_properties or [])} stones",
+        )
         self.statusBar().showMessage(summary)
 
         target_side = (

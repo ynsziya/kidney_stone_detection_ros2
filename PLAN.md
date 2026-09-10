@@ -16,7 +16,7 @@ Kaynak tasarım: [`kidney_stone_detection.md`](kidney_stone_detection.md)
 | 5 | TotalSegmentator böbrek segmentasyonu | Tamamlandı |
 | 6 | Kidney ROI crop + margin | Tamamlandı |
 | 7 | Stone segmentation iskeleti (geçici HU/CCA) | Tamamlandı |
-| 8 | Post-process + taş ölçümleri (M4) | Bekliyor |
+| 8 | Post-process + taş ölçümleri (M4) | Tamamlandı |
 | 9 | Mesh + STL export + mesh viewer (M5) | Bekliyor |
 | 10 | Bağımsız ROS2 paketi → RViz + Gazebo | Bekliyor |
 | 11 | Gerçek stone model eğitimi | Sonra |
@@ -159,4 +159,4 @@ Stack: Python 3.11+, SimpleITK, nibabel, pydicom, numpy, scipy, scikit-image, Py
 
 ## Sonraki oturum
 
-**Adım 8:** Post-process + taş ölçümleri (hacim, çap, HU, laterality) — ask modunda tam kod paylaşılacak.
+**Adım 9:** Mesh + STL export + mesh viewer (M5) — ask modunda tam kod paylaşılacak.
