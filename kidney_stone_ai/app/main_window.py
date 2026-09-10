@@ -44,11 +44,10 @@ def slice_to_qpixmap(
         gray = ((clipped - v_min) / (v_max - v_min) * 255.0).astype(np.uint8)
 
     y, x = gray.shape
-    rgb = np.stack([gray, gray, gray], axis=-1)  # (y,x,3)
+    rgb = np.stack([gray, gray, gray], axis=-1)
 
     if kidney_mask is not None:
         m = kidney_mask[z_index]
-        # sol = kırmızımsı, sağ = mavimsi (yarı saydam karışım)
         left = m == 1
         right = m == 2
         rgb[left, 0] = np.clip(rgb[left, 0].astype(np.int16) + 120, 0, 255).astype(np.uint8)
@@ -73,6 +72,8 @@ class MainWindow(QMainWindow):
         self.scan: ScanData | None = None
         self.display_scan: ScanData | None = None
         self.kidney_mask: np.ndarray | None = None
+        self.kidney_rois: list | None = None
+        self.view_mode: str = "full"  # "full" | "left" | "right"
 
         self.path_label = QLabel("No file loaded")
         self.path_label.setWordWrap(True)
@@ -107,11 +108,29 @@ class MainWindow(QMainWindow):
         btn_kidney = QPushButton("Segment kidneys")
         btn_kidney.clicked.connect(self.run_kidney_segmentation)
 
+        btn_roi = QPushButton("Extract kidney ROIs")
+        btn_roi.clicked.connect(self.extract_rois)
+
+        btn_view_full = QPushButton("View full")
+        btn_view_full.clicked.connect(lambda: self.set_view_mode("full"))
+
+        btn_view_left = QPushButton("View left ROI")
+        btn_view_left.clicked.connect(lambda: self.set_view_mode("left"))
+
+        btn_view_right = QPushButton("View right ROI")
+        btn_view_right.clicked.connect(lambda: self.set_view_mode("right"))
+
         top_row = QHBoxLayout()
         top_row.addWidget(btn_nifti)
         top_row.addWidget(btn_dicom)
         top_row.addWidget(btn_3d)
         top_row.addWidget(btn_kidney)
+        top_row.addWidget(btn_roi)
+
+        roi_view_row = QHBoxLayout()
+        roi_view_row.addWidget(btn_view_full)
+        roi_view_row.addWidget(btn_view_left)
+        roi_view_row.addWidget(btn_view_right)
 
         slice_row = QHBoxLayout()
         slice_row.addWidget(self.slice_label)
@@ -119,6 +138,7 @@ class MainWindow(QMainWindow):
 
         layout = QVBoxLayout()
         layout.addLayout(top_row)
+        layout.addLayout(roi_view_row)
         layout.addWidget(self.preprocess_check)
         layout.addWidget(self.path_label)
         layout.addWidget(self.info_label)
@@ -152,11 +172,18 @@ class MainWindow(QMainWindow):
             return
 
         self.kidney_mask = None
+        self.kidney_rois = None
+        self.view_mode = "full"
         self.path_label.setText(f"Loaded: {path}")
         self.refresh_display_scan()
 
     def refresh_display_scan(self) -> None:
         if self.scan is None:
+            return
+
+        # ROI görünümündeyken preprocess full CT'ye zorlamasın
+        if self.view_mode in ("left", "right"):
+            self.set_view_mode(self.view_mode)
             return
 
         try:
@@ -173,7 +200,7 @@ class MainWindow(QMainWindow):
         sx, sy, sz = self.display_scan.spacing
 
         self.info_label.setText(
-            f"shape (z,y,x): ({z}, {y}, {x}) | "
+            f"view=full | shape (z,y,x): ({z}, {y}, {x}) | "
             f"spacing mm: ({sx:.3f}, {sy:.3f}, {sz:.3f}) | "
             f"min/max: {float(vol.min()):.1f} / {float(vol.max()):.1f}"
         )
@@ -188,7 +215,7 @@ class MainWindow(QMainWindow):
         self.update_slice_view(self.slice_slider.value())
 
     def on_preprocess_toggled(self) -> None:
-        if self.scan is not None:
+        if self.scan is not None and self.view_mode == "full":
             self.refresh_display_scan()
 
     def on_slice_changed(self, value: int) -> None:
@@ -203,13 +230,24 @@ class MainWindow(QMainWindow):
         self.slice_label.setText(f"Slice: {z_index} / {vol.shape[0] - 1}")
 
         clim: tuple[float, float] | None
-        if self.preprocess_check.isChecked():
+        if self.view_mode == "full" and self.preprocess_check.isChecked():
             clim = None
         else:
             clim = (-200.0, 400.0)
 
-        # Maske sadece aynı shape ise çiz (RAW ile eşleşmeli)
-        mask = self.kidney_mask
+        mask = None
+        if self.view_mode == "full":
+            mask = self.kidney_mask
+        elif self.kidney_rois:
+            roi = next(
+                (r for r in self.kidney_rois if r.laterality == self.view_mode),
+                None,
+            )
+            if roi is not None:
+                m = np.zeros_like(roi.mask, dtype=np.uint8)
+                m[roi.mask > 0] = roi.label
+                mask = m
+
         if mask is not None and mask.shape != vol.shape:
             mask = None
 
@@ -236,12 +274,12 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "No data", "Load a scan first.")
             return
 
-        if self.preprocess_check.isChecked():
+        if self.view_mode == "full" and self.preprocess_check.isChecked():
             show_orthogonal_slices(self.display_scan, title="Preprocessed CT")
         else:
             show_orthogonal_slices(
                 self.display_scan,
-                title="Raw CT",
+                title=f"CT ({self.view_mode})",
                 clim=(-200.0, 400.0),
             )
 
@@ -257,19 +295,110 @@ class MainWindow(QMainWindow):
         )
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            # 4GB VRAM: fast=True şart. GPU yoksa device="cpu"
             result = segment_kidneys(self.scan, fast=True, device="gpu")
             self.kidney_mask = result.mask
+            self.kidney_rois = None
             counts = mask_voxel_counts(result.mask)
             self.statusBar().showMessage(
                 f"Kidneys done — left voxels: {counts['left']}, right: {counts['right']}"
             )
-            # Overlay RAW geometride; preprocess açıksa kapatıp raw göster
             if self.preprocess_check.isChecked():
                 self.preprocess_check.setChecked(False)
+            self.view_mode = "full"
+            self.display_scan = self.scan
             self.update_slice_view(self.slice_slider.value())
         except Exception as exc:
             QMessageBox.critical(self, "Segmentation error", str(exc))
             self.statusBar().showMessage("Segmentation failed")
         finally:
             QApplication.restoreOverrideCursor()
+
+    def extract_rois(self) -> None:
+        if self.scan is None or self.kidney_mask is None:
+            QMessageBox.information(
+                self,
+                "Need kidneys",
+                "Önce CT yükle ve Segment kidneys çalıştır.",
+            )
+            return
+
+        from ai import extract_kidney_rois, roi_summary
+
+        try:
+            self.kidney_rois = extract_kidney_rois(
+                self.scan,
+                self.kidney_mask,
+                margin=25,
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "ROI error", str(exc))
+            return
+
+        if not self.kidney_rois:
+            QMessageBox.warning(self, "ROI", "Böbrek ROI bulunamadı.")
+            return
+
+        summary = roi_summary(self.kidney_rois)
+        self.statusBar().showMessage(summary)
+        print("=== Kidney ROIs ===")
+        print(summary)
+        for r in self.kidney_rois:
+            print(
+                f"  {r.laterality}: volume {r.volume.shape}, "
+                f"mask voxels={int(r.mask.sum())}, origin={r.origin}"
+            )
+
+        QMessageBox.information(
+            self,
+            "ROIs ready",
+            summary + "\n\nDetay terminalde. View left/right ile ROI dilimine geç.",
+        )
+
+    def set_view_mode(self, mode: str) -> None:
+        self.view_mode = mode
+
+        if mode == "full":
+            if self.scan is None:
+                return
+            if self.preprocess_check.isChecked():
+                self.display_scan = preprocess(self.scan)
+            else:
+                self.display_scan = self.scan
+        else:
+            if not self.kidney_rois:
+                QMessageBox.information(self, "No ROI", "Önce Extract kidney ROIs.")
+                self.set_view_mode("full")
+                return
+            roi = next((r for r in self.kidney_rois if r.laterality == mode), None)
+            if roi is None:
+                QMessageBox.information(self, "No ROI", f"{mode} ROI yok.")
+                self.set_view_mode("full")
+                return
+            self.display_scan = ScanData(
+                volume=roi.volume,
+                spacing=roi.spacing,
+                origin=roi.origin,
+                direction=roi.direction,
+                affine=roi.affine,
+                path=self.scan.path if self.scan else Path("."),
+            )
+
+        if self.display_scan is None:
+            return
+
+        vol = self.display_scan.volume
+        z = vol.shape[0]
+        sx, sy, sz = self.display_scan.spacing
+
+        self.slice_slider.blockSignals(True)
+        self.slice_slider.setEnabled(True)
+        self.slice_slider.setMinimum(0)
+        self.slice_slider.setMaximum(max(0, z - 1))
+        self.slice_slider.setValue(z // 2)
+        self.slice_slider.blockSignals(False)
+
+        self.info_label.setText(
+            f"view={self.view_mode} | shape (z,y,x)={vol.shape} | "
+            f"spacing mm: ({sx:.3f}, {sy:.3f}, {sz:.3f})"
+        )
+        self.update_slice_view(self.slice_slider.value())
