@@ -1,0 +1,1 @@
+ros2 service call /gazebo_mesh_spawner/reload std_srvs/srv/Trigger {}

@@ -25,11 +25,18 @@ ament_target_dependencies(
   std_srvs
 )
 
-install(TARGETS mesh_marker_publisher
+add_executable(gazebo_mesh_spawner src/gazebo_mesh_spawner.cpp)
+ament_target_dependencies(
+  gazebo_mesh_spawner
+  rclcpp
+  std_srvs
+)
+
+install(TARGETS mesh_marker_publisher gazebo_mesh_spawner
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(DIRECTORY launch rviz
+install(DIRECTORY launch rviz worlds
   DESTINATION share/${PROJECT_NAME}
 )
 

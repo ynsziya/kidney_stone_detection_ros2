@@ -19,7 +19,7 @@ Kaynak tasarım: [`kidney_stone_detection.md`](kidney_stone_detection.md)
 | 8 | Post-process + taş ölçümleri (M4) | Tamamlandı |
 | 9 | Mesh + STL export + mesh viewer (M5) | Tamamlandı |
 | 10A | Bağımsız ROS2 paketi → RViz (MarkerArray) | Tamamlandı |
-| 10B | Aynı mesh’ler → Gazebo spawn | Bekliyor |
+| 10B | Aynı mesh’ler → Gazebo spawn | Tamamlandı |
 | 11 | Gerçek stone model eğitimi | Sonra |
 
 ## Çalışma şekli (sabit kural)
@@ -143,8 +143,9 @@ Stack: Python 3.11+, SimpleITK, nibabel, pydicom, numpy, scipy, scikit-image, Py
 
 ### Adım 10B — Gazebo spawn
 
-- Aynı STL’ler için Gazebo (gz-sim) model spawn
-- GUI “ROS2’ye gönder” = dosya yaz + node/service tetikle (sıkı coupling yok)
+- C++ `gazebo_mesh_spawner`: `mesh_dir` → tek static SDF model → `ros_gz_sim create`
+- `worlds/empty.sdf` + `view_gazebo.launch.py`
+- `~/reload` ile yeniden yazıp spawn
 - **Çıkış kriteri:** Export edilen böbrek/taş Gazebo’da da görünüyor
 
 ### Adım 11 (ileride) — Gerçek stone model eğitimi
@@ -157,4 +158,4 @@ Stack: Python 3.11+, SimpleITK, nibabel, pydicom, numpy, scipy, scikit-image, Py
 
 ## Sonraki oturum
 
-**Adım 10B:** Gazebo spawn — export STL’leri gz-sim’de gösterme.
+**Adım 11** (ileride) veya GUI’den gevşek “Send to RViz/Gazebo” köprüsü.

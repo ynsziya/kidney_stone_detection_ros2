@@ -4,7 +4,7 @@
   <name>kidney_stone_viz_ros2</name>
   <version>0.1.0</version>
   <description>
-    Publish exported kidney/stone STL meshes as RViz MarkerArray (C++).
+    Publish exported kidney/stone STL meshes to RViz (MarkerArray) and Gazebo (gz-sim).
     Independent of kidney_stone_ai and ct_to_mesh_ros2.
   </description>
   <maintainer email="yunus@todo.todo">yunus</maintainer>
@@ -20,7 +20,9 @@
 
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
   <exec_depend>rviz2</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
