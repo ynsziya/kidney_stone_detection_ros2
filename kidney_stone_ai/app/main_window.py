@@ -11,7 +11,6 @@ from PySide6.QtGui import QBrush, QColor, QFont, QImage, QPixmap, QTextCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
-    QCheckBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -30,7 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from preprocessing import ScanData, load_scan, preprocess
+from preprocessing import ScanData, load_scan
 from visualization import show_orthogonal_slices
 
 
@@ -196,10 +195,6 @@ class MainWindow(QMainWindow):
         self.slice_slider.setEnabled(False)
         self.slice_slider.valueChanged.connect(self.on_slice_changed)
         self.slice_label = QLabel("Slice: —")
-
-        self.preprocess_check = QCheckBox("Use preprocess (clip → resample → normalize)")
-        self.preprocess_check.setChecked(False)
-        self.preprocess_check.stateChanged.connect(self.on_preprocess_toggled)
 
         btn_nifti = QPushButton("Open NIfTI…")
         btn_nifti.clicked.connect(self.open_nifti)
@@ -393,7 +388,6 @@ class MainWindow(QMainWindow):
         root = QVBoxLayout()
         root.addLayout(top_row)
         root.addLayout(roi_view_row)
-        root.addWidget(self.preprocess_check)
         root.addWidget(splitter, stretch=1)
 
         central = QWidget()
@@ -521,14 +515,7 @@ class MainWindow(QMainWindow):
             self.set_view_mode(self.view_mode)
             return
 
-        try:
-            if self.preprocess_check.isChecked():
-                self.display_scan = preprocess(self.scan)
-            else:
-                self.display_scan = self.scan
-        except Exception as exc:
-            QMessageBox.critical(self, "Preprocess error", str(exc))
-            return
+        self.display_scan = self.scan
 
         vol = self.display_scan.volume
         z, y, x = vol.shape
@@ -548,10 +535,6 @@ class MainWindow(QMainWindow):
         self.slice_slider.blockSignals(False)
         self.update_slice_view(self.slice_slider.value())
 
-    def on_preprocess_toggled(self) -> None:
-        if self.scan is not None and self.view_mode == "full":
-            self.refresh_display_scan()
-
     def on_slice_changed(self, value: int) -> None:
         self.update_slice_view(value)
 
@@ -563,11 +546,7 @@ class MainWindow(QMainWindow):
         z_index = int(np.clip(z_index, 0, vol.shape[0] - 1))
         self.slice_label.setText(f"Slice: {z_index} / {vol.shape[0] - 1}")
 
-        clim: tuple[float, float] | None
-        if self.view_mode == "full" and self.preprocess_check.isChecked():
-            clim = None
-        else:
-            clim = (-200.0, 400.0)
+        clim: tuple[float, float] | None = (-200.0, 400.0)
 
         mask = None
         if self.view_mode == "full":
@@ -619,14 +598,11 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "No data", "Load a scan first.")
             return
 
-        if self.view_mode == "full" and self.preprocess_check.isChecked():
-            show_orthogonal_slices(self.display_scan, title="Preprocessed CT")
-        else:
-            show_orthogonal_slices(
-                self.display_scan,
-                title=f"CT ({self.view_mode})",
-                clim=(-200.0, 400.0),
-            )
+        show_orthogonal_slices(
+            self.display_scan,
+            title=f"CT ({self.view_mode})",
+            clim=(-200.0, 400.0),
+        )
 
     # --- Pipeline steps ---
 
@@ -670,8 +646,6 @@ class MainWindow(QMainWindow):
                 f"Kidneys done — left: {counts['left']}, right: {counts['right']}"
             )
 
-            if self.preprocess_check.isChecked():
-                self.preprocess_check.setChecked(False)
             self.view_mode = "full"
             self.display_scan = self.scan
             self.update_slice_view(self.slice_slider.value())
@@ -736,10 +710,7 @@ class MainWindow(QMainWindow):
         if mode == "full":
             if self.scan is None:
                 return
-            if self.preprocess_check.isChecked():
-                self.display_scan = preprocess(self.scan)
-            else:
-                self.display_scan = self.scan
+            self.display_scan = self.scan
         else:
             if not self.kidney_rois:
                 QMessageBox.information(self, "No ROI", "Önce Extract kidney ROIs.")
