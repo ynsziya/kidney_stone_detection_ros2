@@ -32,6 +32,8 @@ from PySide6.QtWidgets import (
 from preprocessing import ScanData, load_scan
 from visualization import show_orthogonal_slices
 
+from app.ros2_bridge import Ros2Bridge, default_mesh_dir
+
 
 def slice_to_qpixmap(
     volume: np.ndarray,
@@ -178,6 +180,8 @@ class MainWindow(QMainWindow):
         self.stone_properties: list | None = None
         self.view_mode: str = "full"
         self._stone_row_meta: list[tuple[str, int, int]] = []
+        self.last_mesh_dir: Path | None = None
+        self._ros_bridge = Ros2Bridge()
 
         self.path_label = QLabel("No file loaded")
         self.path_label.setWordWrap(True)
@@ -213,6 +217,10 @@ class MainWindow(QMainWindow):
         btn_export_mesh.clicked.connect(self.export_meshes)
         btn_show_mesh = QPushButton("Show 3D meshes")
         btn_show_mesh.clicked.connect(self.show_mesh_scene)
+        btn_rviz = QPushButton("Open RViz")
+        btn_rviz.clicked.connect(self.open_rviz)
+        btn_gazebo = QPushButton("Open Gazebo")
+        btn_gazebo.clicked.connect(self.open_gazebo)
         btn_view_full = QPushButton("View full")
         btn_view_full.clicked.connect(lambda: self.set_view_mode("full"))
         btn_view_left = QPushButton("View left ROI")
@@ -230,6 +238,8 @@ class MainWindow(QMainWindow):
             btn_stones,
             btn_export_mesh,
             btn_show_mesh,
+            btn_rviz,
+            btn_gazebo,
         ):
             top_row.addWidget(btn)
 
@@ -919,6 +929,7 @@ class MainWindow(QMainWindow):
         self.set_progress_busy("Exporting STL…")
         try:
             paths = export_all(kidney_meshes, stone_meshes, out)
+            self.last_mesh_dir = Path(out)
             listing = "\n".join(str(p) for p in paths)
             self.append_info("STL export", listing)
             self.set_progress(100, f"Exported {len(paths)} file(s)")
@@ -932,6 +943,99 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Export error", str(exc))
             self.append_info("Export error", str(exc))
             self.set_progress(0, "Export failed")
+
+    def _prepare_mesh_dir_for_ros(self) -> Path | None:
+        """Export (or reuse) STL'leri ROS launch için hazırla."""
+        from mesh import export_all
+
+        out = self.last_mesh_dir or default_mesh_dir()
+        out.mkdir(parents=True, exist_ok=True)
+
+        try:
+            kidney_meshes, stone_meshes = self._build_meshes()
+        except Exception as exc:
+            existing = sorted(out.glob("*.stl"))
+            if existing:
+                self.append_info(
+                    "ROS bridge",
+                    f"Mesh yenilenemedi ({exc}); mevcut STL kullanılıyor:\n"
+                    + "\n".join(str(p) for p in existing),
+                )
+                return out
+            QMessageBox.critical(self, "Mesh error", str(exc))
+            return None
+
+        if kidney_meshes or stone_meshes:
+            try:
+                paths = export_all(kidney_meshes, stone_meshes, out)
+                self.last_mesh_dir = out
+                self.append_info(
+                    "ROS bridge export",
+                    "\n".join(str(p) for p in paths),
+                )
+                return out
+            except Exception as exc:
+                QMessageBox.critical(self, "Export error", str(exc))
+                return None
+
+        existing = sorted(out.glob("*.stl"))
+        if existing:
+            self.last_mesh_dir = out
+            return out
+
+        QMessageBox.information(
+            self,
+            "ROS",
+            "Önce böbrek segmentasyonu (ve isteğe bağlı taş tespiti) yapın "
+            "veya Export STL ile klasör seçin.",
+        )
+        return None
+
+    def open_rviz(self) -> None:
+        if not self._ros_bridge.ros_available():
+            QMessageBox.warning(
+                self,
+                "ROS2",
+                "ROS2 ortamı bulunamadı.\n"
+                "Beklenen: /opt/ros/<distro>/setup.bash ve "
+                "~/ros2_ws/install/setup.bash\n"
+                "(kidney_stone_viz_ros2 build edilmiş olmalı)",
+            )
+            return
+        mesh_dir = self._prepare_mesh_dir_for_ros()
+        if mesh_dir is None:
+            return
+        try:
+            msg = self._ros_bridge.open_rviz(mesh_dir)
+            self.append_info("Open RViz", msg)
+            self.statusBar().showMessage("RViz launch / reload")
+            self.set_progress(100, "RViz")
+        except Exception as exc:
+            QMessageBox.critical(self, "RViz", str(exc))
+            self.append_info("Open RViz error", str(exc))
+
+    def open_gazebo(self) -> None:
+        if not self._ros_bridge.ros_available():
+            QMessageBox.warning(
+                self,
+                "ROS2",
+                "ROS2 ortamı bulunamadı.\n"
+                "Beklenen: /opt/ros/<distro>/setup.bash ve "
+                "~/ros2_ws/install/setup.bash\n"
+                "(kidney_stone_viz_ros2 build edilmiş olmalı)",
+            )
+            return
+        mesh_dir = self._prepare_mesh_dir_for_ros()
+        if mesh_dir is None:
+            return
+        try:
+            msg = self._ros_bridge.open_gazebo(mesh_dir)
+            self.append_info("Open Gazebo", msg)
+            self.statusBar().showMessage("Gazebo launch / reload")
+            self.set_progress(100, "Gazebo")
+        except Exception as exc:
+            QMessageBox.critical(self, "Gazebo", str(exc))
+            self.append_info("Open Gazebo error", str(exc))
 
     def show_mesh_scene(self) -> None:
         from visualization import show_meshes

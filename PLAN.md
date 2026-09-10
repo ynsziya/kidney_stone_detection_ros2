@@ -158,4 +158,6 @@ Stack: Python 3.11+, SimpleITK, nibabel, pydicom, numpy, scipy, scikit-image, Py
 
 ## Sonraki oturum
 
-**Adım 11** (ileride) veya GUI’den gevşek “Send to RViz/Gazebo” köprüsü.
+**Adım 11** (ileride) — gerçek stone model eğitimi.
+
+GUI köprüsü: **Open RViz** / **Open Gazebo** butonları (`app/ros2_bridge.py`, subprocess; rclpy yok).
