@@ -209,6 +209,10 @@ class MainWindow(QMainWindow):
         btn_roi.clicked.connect(self.extract_rois)
         btn_stones = QPushButton("Detect stones (HU)")
         btn_stones.clicked.connect(self.detect_stones)
+        btn_export_mesh = QPushButton("Export STL")
+        btn_export_mesh.clicked.connect(self.export_meshes)
+        btn_show_mesh = QPushButton("Show 3D meshes")
+        btn_show_mesh.clicked.connect(self.show_mesh_scene)
         btn_view_full = QPushButton("View full")
         btn_view_full.clicked.connect(lambda: self.set_view_mode("full"))
         btn_view_left = QPushButton("View left ROI")
@@ -224,6 +228,8 @@ class MainWindow(QMainWindow):
             btn_kidney,
             btn_roi,
             btn_stones,
+            btn_export_mesh,
+            btn_show_mesh,
         ):
             top_row.addWidget(btn)
 
@@ -867,3 +873,96 @@ class MainWindow(QMainWindow):
             self.slice_slider.setValue(int(zs[len(zs) // 2]))
         else:
             self.update_slice_view(self.slice_slider.value())
+
+    def _build_meshes(self):
+        if self.scan is None or self.kidney_mask is None:
+            raise RuntimeError("Önce CT yükle ve Segment kidneys çalıştır.")
+
+        from mesh import build_kidney_meshes, build_stone_meshes
+
+        kidney_meshes = build_kidney_meshes(
+            self.kidney_mask,
+            self.scan.spacing,
+            self.scan.origin,
+            self.scan.direction,
+        )
+        stone_meshes = []
+        if self.kidney_rois and self.stone_results:
+            stone_meshes = build_stone_meshes(
+                self.kidney_rois,
+                self.stone_results,
+            )
+        return kidney_meshes, stone_meshes
+
+    def export_meshes(self) -> None:
+        from mesh import export_all
+
+        try:
+            kidney_meshes, stone_meshes = self._build_meshes()
+        except Exception as exc:
+            QMessageBox.critical(self, "Mesh error", str(exc))
+            self.append_info("Mesh error", str(exc))
+            return
+
+        if not kidney_meshes and not stone_meshes:
+            QMessageBox.information(self, "Mesh", "Export edilecek mesh yok.")
+            return
+
+        default_dir = Path(__file__).resolve().parent.parent / "outputs" / "meshes"
+        default_dir.mkdir(parents=True, exist_ok=True)
+        out = QFileDialog.getExistingDirectory(
+            self, "STL klasörü seç", str(default_dir)
+        )
+        if not out:
+            return
+
+        self.set_progress_busy("Exporting STL…")
+        try:
+            paths = export_all(kidney_meshes, stone_meshes, out)
+            listing = "\n".join(str(p) for p in paths)
+            self.append_info("STL export", listing)
+            self.set_progress(100, f"Exported {len(paths)} file(s)")
+            self.statusBar().showMessage(f"Exported {len(paths)} STL file(s)")
+            QMessageBox.information(
+                self,
+                "Export OK",
+                f"{len(paths)} dosya yazıldı:\n{listing}",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Export error", str(exc))
+            self.append_info("Export error", str(exc))
+            self.set_progress(0, "Export failed")
+
+    def show_mesh_scene(self) -> None:
+        from visualization import show_meshes
+
+        try:
+            kidney_meshes, stone_meshes = self._build_meshes()
+        except Exception as exc:
+            QMessageBox.critical(self, "Mesh error", str(exc))
+            self.append_info("Mesh error", str(exc))
+            return
+
+        if not kidney_meshes and not stone_meshes:
+            QMessageBox.information(self, "Mesh", "Gösterilecek mesh yok.")
+            return
+
+        if not stone_meshes:
+            self.append_info(
+                "3D meshes",
+                "Taş mesh'i yok — sadece böbrek gösterilecek. "
+                "Taş için Extract ROIs + Detect stones çalıştır.",
+            )
+
+        self.set_progress_busy("Building 3D meshes…")
+        QApplication.processEvents()
+        try:
+            show_meshes(kidney_meshes, stone_meshes)
+            self.set_progress(
+                100,
+                f"Meshes shown — kidneys={len(kidney_meshes)}, stones={len(stone_meshes)}",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Viewer error", str(exc))
+            self.append_info("Mesh viewer error", str(exc))
+            self.set_progress(0, "Mesh viewer failed")
