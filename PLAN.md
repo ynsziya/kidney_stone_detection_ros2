@@ -17,8 +17,9 @@ Kaynak tasarım: [`kidney_stone_detection.md`](kidney_stone_detection.md)
 | 6 | Kidney ROI crop + margin | Tamamlandı |
 | 7 | Stone segmentation iskeleti (geçici HU/CCA) | Tamamlandı |
 | 8 | Post-process + taş ölçümleri (M4) | Tamamlandı |
-| 9 | Mesh + STL export + mesh viewer (M5) | Bekliyor |
-| 10 | Bağımsız ROS2 paketi → RViz + Gazebo | Bekliyor |
+| 9 | Mesh + STL export + mesh viewer (M5) | Tamamlandı |
+| 10A | Bağımsız ROS2 paketi → RViz (MarkerArray) | Tamamlandı |
+| 10B | Aynı mesh’ler → Gazebo spawn | Bekliyor |
 | 11 | Gerçek stone model eğitimi | Sonra |
 
 ## Çalışma şekli (sabit kural)
@@ -50,22 +51,13 @@ flowchart TD
 İki katman:
 
 1. **`kidney_stone_ai/`** — saf Python: yükleme, AI, ölçüm, mesh, GUI
-2. **ROS2 paketi** (sonra) — dışarıdan üretilen mesh’leri Gazebo/RViz’e basma (pipeline’dan bağımsız)
+2. **`kidney_stone_viz_ros2/`** — dışarıdan üretilen mesh’leri RViz (10A) / Gazebo (10B) basma (pipeline’dan bağımsız)
 
 ## Proje iskeleti
 
 ```
-kidney_stone_ai/
-├── app/                 # PySide6 GUI
-├── ai/
-├── preprocessing/
-├── postprocessing/
-├── mesh/
-├── visualization/
-├── models/
-├── data/                # örnek DICOM / NIfTI (gitignore)
-├── requirements.txt
-└── main.py
+kidney_stone_ai/          # saf Python pipeline + GUI
+kidney_stone_viz_ros2/    # ROS2: RViz MarkerArray (10A), Gazebo (10B)
 ```
 
 Stack: Python 3.11+, SimpleITK, nibabel, pydicom, numpy, scipy, scikit-image, PyVista, trimesh, PySide6; böbrek için TotalSegmentator; taş için sonra nnU-Net/MONAI.
@@ -141,13 +133,19 @@ Stack: Python 3.11+, SimpleITK, nibabel, pydicom, numpy, scipy, scikit-image, Py
 - GUI’den export
 - **Çıkış kriteri:** `kidney.stl` / `stone.stl` dosyaları üretiliyor
 
-### Adım 10 — ROS2 paketi (bağımsız görselleştirme)
+### Adım 10A — ROS2 RViz (bağımsız görselleştirme)
 
-- Yeni ROS2 Python paketi: mesh dosyası yolu parametre/service ile alınır
-- Marker / mesh resource → **RViz**
-- Aynı mesh’ler için **Gazebo** spawn
-- GUI “ROS2’ye gönder” = dosya yaz + node tetikle (sıkı coupling yok)
-- **Çıkış kriteri:** Export edilen böbrek/taş RViz + Gazebo’da görünüyor
+- Paket: `kidney_stone_viz_ros2/` (`kidney_stone_ai` ile kardeş, `ct_to_mesh_ros2`’den bağımsız)
+- C++ node `mesh_marker_publisher`: `mesh_dir` → `*.stl` → `/kidney_stone/markers` (MarkerArray, MESH_RESOURCE)
+- `~/reload` (std_srvs/Trigger) ile STL yenileme
+- Launch/RViz: Python launch + `meshes.rviz` (değişmedi)
+- **Çıkış kriteri:** Export edilen böbrek/taş RViz’de görünüyor
+
+### Adım 10B — Gazebo spawn
+
+- Aynı STL’ler için Gazebo (gz-sim) model spawn
+- GUI “ROS2’ye gönder” = dosya yaz + node/service tetikle (sıkı coupling yok)
+- **Çıkış kriteri:** Export edilen böbrek/taş Gazebo’da da görünüyor
 
 ### Adım 11 (ileride) — Gerçek stone model eğitimi
 
@@ -159,4 +157,4 @@ Stack: Python 3.11+, SimpleITK, nibabel, pydicom, numpy, scipy, scikit-image, Py
 
 ## Sonraki oturum
 
-**Adım 9:** Mesh + STL export + mesh viewer (M5) — ask modunda tam kod paylaşılacak.
+**Adım 10B:** Gazebo spawn — export STL’leri gz-sim’de gösterme.
