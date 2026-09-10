@@ -6,6 +6,7 @@ import numpy as np
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QFileDialog,
     QHBoxLayout,
@@ -26,9 +27,9 @@ def slice_to_qpixmap(
     volume: np.ndarray,
     z_index: int,
     clim: tuple[float, float] | None = None,
+    kidney_mask: np.ndarray | None = None,
 ) -> QPixmap:
-    """(z,y,x) volume'dan bir axial dilimi QPixmap'e çevirir."""
-    plane = np.asarray(volume[z_index], dtype=np.float32)  # (y, x)
+    plane = np.asarray(volume[z_index], dtype=np.float32)
 
     if clim is None:
         v_min = float(plane.min())
@@ -37,17 +38,29 @@ def slice_to_qpixmap(
         v_min, v_max = clim
 
     if v_max <= v_min:
-        norm = np.zeros_like(plane, dtype=np.uint8)
+        gray = np.zeros_like(plane, dtype=np.uint8)
     else:
         clipped = np.clip(plane, v_min, v_max)
-        norm = ((clipped - v_min) / (v_max - v_min) * 255.0).astype(np.uint8)
+        gray = ((clipped - v_min) / (v_max - v_min) * 255.0).astype(np.uint8)
 
-    # QImage: satır satır, grayscale
-    y, x = norm.shape
-    bytes_per_line = x
-    image = QImage(norm.data, x, y, bytes_per_line, QImage.Format.Format_Grayscale8)
-    # QImage, numpy buffer'a bağlı kalmasın diye kopyala
-    image = image.copy()
+    y, x = gray.shape
+    rgb = np.stack([gray, gray, gray], axis=-1)  # (y,x,3)
+
+    if kidney_mask is not None:
+        m = kidney_mask[z_index]
+        # sol = kırmızımsı, sağ = mavimsi (yarı saydam karışım)
+        left = m == 1
+        right = m == 2
+        rgb[left, 0] = np.clip(rgb[left, 0].astype(np.int16) + 120, 0, 255).astype(np.uint8)
+        rgb[left, 1] = (rgb[left, 1] * 0.5).astype(np.uint8)
+        rgb[left, 2] = (rgb[left, 2] * 0.5).astype(np.uint8)
+        rgb[right, 2] = np.clip(rgb[right, 2].astype(np.int16) + 120, 0, 255).astype(np.uint8)
+        rgb[right, 0] = (rgb[right, 0] * 0.5).astype(np.uint8)
+        rgb[right, 1] = (rgb[right, 1] * 0.5).astype(np.uint8)
+
+    rgb = np.ascontiguousarray(rgb)
+    bytes_per_line = 3 * x
+    image = QImage(rgb.data, x, y, bytes_per_line, QImage.Format.Format_RGB888).copy()
     return QPixmap.fromImage(image)
 
 
@@ -59,6 +72,7 @@ class MainWindow(QMainWindow):
 
         self.scan: ScanData | None = None
         self.display_scan: ScanData | None = None
+        self.kidney_mask: np.ndarray | None = None
 
         self.path_label = QLabel("No file loaded")
         self.path_label.setWordWrap(True)
@@ -90,10 +104,14 @@ class MainWindow(QMainWindow):
         btn_3d = QPushButton("Show 3D (PyVista)")
         btn_3d.clicked.connect(self.open_3d)
 
+        btn_kidney = QPushButton("Segment kidneys")
+        btn_kidney.clicked.connect(self.run_kidney_segmentation)
+
         top_row = QHBoxLayout()
         top_row.addWidget(btn_nifti)
         top_row.addWidget(btn_dicom)
         top_row.addWidget(btn_3d)
+        top_row.addWidget(btn_kidney)
 
         slice_row = QHBoxLayout()
         slice_row.addWidget(self.slice_label)
@@ -133,6 +151,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Load error", str(exc))
             return
 
+        self.kidney_mask = None
         self.path_label.setText(f"Loaded: {path}")
         self.refresh_display_scan()
 
@@ -183,14 +202,23 @@ class MainWindow(QMainWindow):
         z_index = int(np.clip(z_index, 0, vol.shape[0] - 1))
         self.slice_label.setText(f"Slice: {z_index} / {vol.shape[0] - 1}")
 
-        # RAW HU ise pencerele; normalize [0,1] ise otomatik
         clim: tuple[float, float] | None
         if self.preprocess_check.isChecked():
             clim = None
         else:
             clim = (-200.0, 400.0)
 
-        pix = slice_to_qpixmap(vol, z_index, clim=clim)
+        # Maske sadece aynı shape ise çiz (RAW ile eşleşmeli)
+        mask = self.kidney_mask
+        if mask is not None and mask.shape != vol.shape:
+            mask = None
+
+        pix = slice_to_qpixmap(
+            vol,
+            z_index,
+            clim=clim,
+            kidney_mask=mask,
+        )
         scaled = pix.scaled(
             self.image_label.size(),
             Qt.AspectRatioMode.KeepAspectRatio,
@@ -216,3 +244,32 @@ class MainWindow(QMainWindow):
                 title="Raw CT",
                 clim=(-200.0, 400.0),
             )
+
+    def run_kidney_segmentation(self) -> None:
+        if self.scan is None:
+            QMessageBox.information(self, "No data", "Load a scan first.")
+            return
+
+        from ai import mask_voxel_counts, segment_kidneys
+
+        self.statusBar().showMessage(
+            "Running TotalSegmentator (first run downloads model)..."
+        )
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            # 4GB VRAM: fast=True şart. GPU yoksa device="cpu"
+            result = segment_kidneys(self.scan, fast=True, device="gpu")
+            self.kidney_mask = result.mask
+            counts = mask_voxel_counts(result.mask)
+            self.statusBar().showMessage(
+                f"Kidneys done — left voxels: {counts['left']}, right: {counts['right']}"
+            )
+            # Overlay RAW geometride; preprocess açıksa kapatıp raw göster
+            if self.preprocess_check.isChecked():
+                self.preprocess_check.setChecked(False)
+            self.update_slice_view(self.slice_slider.value())
+        except Exception as exc:
+            QMessageBox.critical(self, "Segmentation error", str(exc))
+            self.statusBar().showMessage("Segmentation failed")
+        finally:
+            QApplication.restoreOverrideCursor()
